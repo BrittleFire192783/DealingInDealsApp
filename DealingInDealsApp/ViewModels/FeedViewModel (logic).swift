@@ -26,7 +26,11 @@ final class FeedViewModel: ObservableObject {
     func refresh() async {
         do {
             let fetched = try await WordPressAPI.latestPosts()
-            posts = fetched
+            let ordered = fetched.sorted { $0.date > $1.date }
+            posts = ordered
+            #if DEBUG
+            print("Refreshed posts count: \(ordered.count)")
+            #endif
             state = .loaded
         } catch {
             state = .failed(error.localizedDescription)

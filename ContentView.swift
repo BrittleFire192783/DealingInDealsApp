@@ -1,6 +1,9 @@
 import SwiftUI
 import WebKit
 
+//test pushing
+
+
 // MARK: - ContentView (main screen)
 struct ContentView: View {
     @StateObject private var vm = FeedViewModel()
@@ -72,7 +75,6 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("Dealing In Deals")
             .navigationDestination(for: WPPost.self) { post in
                 DealDetailView(url: post.link)
             }
@@ -83,6 +85,17 @@ struct ContentView: View {
                         prompt: "Search deals")
             .onChange(of: searchText) { _, newValue in vm.setQuery(newValue) }
             .toolbar {
+                // Centered logo as the title view
+                ToolbarItem(placement: .principal) {
+                    Image("inAppIcon")
+                        .renderingMode(.original)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 150, height: 150)
+                        .padding(.top, 45) // move the logo down ~20 points
+                        .accessibilityLabel("Dealing In Deals")
+                }
+
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
@@ -109,6 +122,9 @@ struct ContentView: View {
                         }
                     }
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                Task { await vm.refresh() }
             }
         }
     }
@@ -275,4 +291,3 @@ struct WebView: UIViewRepresentable {
         uiView.removeObserver(coordinator, forKeyPath: "estimatedProgress")
     }
 }
-
