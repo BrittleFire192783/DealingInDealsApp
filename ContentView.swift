@@ -8,6 +8,9 @@ import WebKit
 struct ContentView: View {
     @StateObject private var vm = FeedViewModel()
     @State private var searchText = ""
+    private let pageSize = 20
+    @State private var loadedCount = 20
+    @State private var isLoadingMore = false
 
     private let cols = [
         GridItem(.flexible(), spacing: 12),
@@ -31,13 +34,19 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
-                        Button("Try Again") { Task { await vm.refresh() } }
-                            .buttonStyle(.borderedProminent)
+                        Button("Try Again") {
+                            Task {
+                                loadedCount = pageSize
+                                isLoadingMore = false
+                                await vm.refresh()
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 case .loaded:
-                    let list = vm.visiblePosts
+                    let list = Array(vm.visiblePosts.prefix(loadedCount))
                     if list.isEmpty {
                         VStack(spacing: 12) {
                             ContentUnavailableView(
@@ -54,6 +63,8 @@ struct ContentView: View {
                                     searchText = ""
                                     vm.setQuery("")
                                     vm.selectStore(nil)
+                                    loadedCount = pageSize
+                                    isLoadingMore = false
                                 } label: {
                                     Label("Clear filters", systemImage: "line.3.horizontal.decrease.circle")
                                 }
@@ -71,6 +82,15 @@ struct ContentView: View {
                                 }
                             }
                             .padding(12)
+
+                            if loadedCount < vm.visiblePosts.count {
+                                ProgressView("Loading more…")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 24)
+                                    .onAppear {
+                                        if !isLoadingMore { loadMore() }
+                                    }
+                            }
                         }
                     }
                 }
@@ -78,12 +98,26 @@ struct ContentView: View {
             .navigationDestination(for: WPPost.self) { post in
                 DealDetailView(url: post.link)
             }
-            .task { if case .idle = vm.state { await vm.load() } }
-            .refreshable { await vm.refresh() }
+            .task {
+                if case .idle = vm.state {
+                    loadedCount = pageSize
+                    isLoadingMore = false
+                    await vm.load()
+                }
+            }
+            .refreshable {
+                loadedCount = pageSize
+                isLoadingMore = false
+                await vm.refresh()
+            }
             .searchable(text: $searchText,
                         placement: .navigationBarDrawer(displayMode: .always),
                         prompt: "Search deals")
-            .onChange(of: searchText) { _, newValue in vm.setQuery(newValue) }
+            .onChange(of: searchText) { _, newValue in
+                vm.setQuery(newValue)
+                loadedCount = pageSize
+                isLoadingMore = false
+            }
             .toolbar {
                 // Centered logo as the title view
                 ToolbarItem(placement: .principal) {
@@ -100,6 +134,8 @@ struct ContentView: View {
                     Menu {
                         Button {
                             vm.selectStore(nil)
+                            loadedCount = pageSize
+                            isLoadingMore = false
                         } label: {
                             Label("All stores", systemImage: vm.selectedStore == nil ? "checkmark" : "bag")
                         }
@@ -109,7 +145,11 @@ struct ContentView: View {
                             Label("No stores found (last 7 days)", systemImage: "clock")
                         } else {
                             ForEach(stores, id: \.self) { name in
-                                Button { vm.selectStore(name) } label: {
+                                Button {
+                                    vm.selectStore(name)
+                                    loadedCount = pageSize
+                                    isLoadingMore = false
+                                } label: {
                                     Label(name, systemImage: vm.selectedStore == name ? "checkmark" : "bag")
                                 }
                             }
@@ -124,8 +164,21 @@ struct ContentView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                Task { await vm.refresh() }
+                Task {
+                    loadedCount = pageSize
+                    isLoadingMore = false
+                    await vm.refresh()
+                }
             }
+        }
+    }
+
+    private func loadMore() {
+        isLoadingMore = true
+        let newCount = loadedCount + pageSize
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            loadedCount = min(newCount, vm.visiblePosts.count)
+            isLoadingMore = false
         }
     }
 }
